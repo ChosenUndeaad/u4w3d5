@@ -1,10 +1,8 @@
 package catalogo.entity;
 
-import catalogo.entity.*;
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
-import javax.persistence.NoResultException;
-
+import java.time.LocalDate;
 import java.util.List;
 
 public class CatalogoService {
@@ -15,32 +13,40 @@ public class CatalogoService {
         this.em = em;
     }
 
-    // Aggiunta elemento catalogo (libro o rivista)
     public void aggiungiElemento(ElementoCatalogo elemento) {
-        em.getTransaction().begin();
-        em.persist(elemento);
-        em.getTransaction().commit();
-    }
-
-    // Rimozione elemento dato ISBN
-    public boolean rimuoviElemento(String isbn) {
-        em.getTransaction().begin();
-        ElementoCatalogo elemento = em.find(ElementoCatalogo.class, isbn);
-        if (elemento != null) {
-            em.remove(elemento);
+        try {
+            em.getTransaction().begin();
+            em.persist(elemento);
             em.getTransaction().commit();
-            return true;
+            System.out.println("Elemento aggiunto: " + elemento.getTitolo());
+        } catch (Exception e) {
+            em.getTransaction().rollback();
+            System.err.println("Errore durante l'aggiunta dell'elemento:");
+            e.printStackTrace();
         }
-        em.getTransaction().rollback();
-        return false;
     }
 
-    // Ricerca per ISBN
-    public ElementoCatalogo cercaPerIsbn(String isbn) {
+    public void rimuoviElemento(String isbn) {
+        try {
+            em.getTransaction().begin();
+            ElementoCatalogo elemento = em.find(ElementoCatalogo.class, isbn);
+            if (elemento != null) {
+                em.remove(elemento);
+                System.out.println("Elemento rimosso con ISBN: " + isbn);
+            } else {
+                System.out.println("Elemento con ISBN " + isbn + " non trovato.");
+            }
+            em.getTransaction().commit();
+        } catch (Exception e) {
+            em.getTransaction().rollback();
+            e.printStackTrace();
+        }
+    }
+
+    public ElementoCatalogo cercaPerISBN(String isbn) {
         return em.find(ElementoCatalogo.class, isbn);
     }
 
-    // Ricerca per anno pubblicazione
     public List<ElementoCatalogo> cercaPerAnno(int anno) {
         TypedQuery<ElementoCatalogo> query = em.createQuery(
                 "SELECT e FROM ElementoCatalogo e WHERE e.annoPubblicazione = :anno", ElementoCatalogo.class);
@@ -48,24 +54,34 @@ public class CatalogoService {
         return query.getResultList();
     }
 
-    // Ricerca per autore (solo libri)
     public List<Libro> cercaPerAutore(String autore) {
         TypedQuery<Libro> query = em.createQuery(
-                "SELECT l FROM Libro l WHERE LOWER(l.autore) LIKE LOWER(:autore)", Libro.class);
-        query.setParameter("autore", "%" + autore + "%");
+                "SELECT l FROM Libro l WHERE l.autore = :autore", Libro.class);
+        query.setParameter("autore", autore);
         return query.getResultList();
     }
 
-    // Ricerca per titolo o parte di esso (sia libri che riviste)
     public List<ElementoCatalogo> cercaPerTitolo(String titolo) {
         TypedQuery<ElementoCatalogo> query = em.createQuery(
-                "SELECT e FROM ElementoCatalogo e WHERE LOWER(e.titolo) LIKE LOWER(:titolo)", ElementoCatalogo.class);
-        query.setParameter("titolo", "%" + titolo + "%");
+                "SELECT e FROM ElementoCatalogo e WHERE LOWER(e.titolo) LIKE LOWER(CONCAT('%', :titolo, '%'))",
+                ElementoCatalogo.class);
+        query.setParameter("titolo", titolo);
         return query.getResultList();
     }
 
-    // Ricerca degli elementi attualmente in prestito dato numero tessera utente
-    public List<Prestito> cercaPrestitiAttiviPerTessera(String numeroTessera) {
+    public void registraPrestito(Prestito prestito) {
+        try {
+            em.getTransaction().begin();
+            em.persist(prestito);
+            em.getTransaction().commit();
+            System.out.println("Prestito registrato per utente: " + prestito.getUtente().getNumeroTessera());
+        } catch (Exception e) {
+            em.getTransaction().rollback();
+            e.printStackTrace();
+        }
+    }
+
+    public List<Prestito> prestitiPerUtente(String numeroTessera) {
         TypedQuery<Prestito> query = em.createQuery(
                 "SELECT p FROM Prestito p WHERE p.utente.numeroTessera = :tessera AND p.dataRestituzioneEffettiva IS NULL",
                 Prestito.class);
@@ -73,11 +89,12 @@ public class CatalogoService {
         return query.getResultList();
     }
 
-    // Ricerca prestiti scaduti e non ancora restituiti
-    public List<Prestito> cercaPrestitiScadutiNonRestituiti() {
+    public List<Prestito> prestitiScadutiNonRestituiti() {
+        LocalDate oggi = LocalDate.now();
         TypedQuery<Prestito> query = em.createQuery(
-                "SELECT p FROM Prestito p WHERE p.dataRestituzioneEffettiva IS NULL AND p.dataRestituzionePrevista < CURRENT_DATE",
+                "SELECT p FROM Prestito p WHERE p.dataRestituzioneEffettiva IS NULL AND p.dataRestituzionePrevista < :oggi",
                 Prestito.class);
+        query.setParameter("oggi", oggi);
         return query.getResultList();
     }
 }
